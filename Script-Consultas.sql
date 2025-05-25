@@ -25,13 +25,13 @@ FROM actor a
 WHERE a.last_name ='ALLEN';
 
 --7. Encuentra la cantidad total de películas en cada clasificación de la tabla “film” y muestra la clasificación junto con el recuento.
-SELECT fc.category_id , COUNT(fc.category_id) AS "total_peliculas"
+SELECT c."name" , COUNT(c."name") AS "total_peliculas"
 FROM film f 
 INNER JOIN film_category fc  
     ON f.film_id = fc.film_id
         INNER JOIN category c 
             ON fc.category_id = c.category_id
-GROUP BY fc.category_id
+GROUP BY c."name" 
 ORDER BY "total_peliculas" ASC;
 
 -- 8. Encuentra el título de todas las películas que son ‘PG-13’ o tienen una duración mayor a 3 horas en la tabla film.
@@ -91,7 +91,7 @@ WHERE a.actor_id  IN (
 );
 
 -- 18. Selecciona todos los nombres de las películas únicos.
-SELECT f.title
+SELECT DISTINCT(f.title)
 FROM film f;
 
 -- 19. Encuentra el título de las películas que son comedias y tienen una duración mayor a 180 minutos en la tabla “film”.
@@ -126,10 +126,10 @@ SELECT CONCAT(a.first_name,' ', a.last_name ) AS Nombre_Actor
 FROM actor a;
 
 -- 23. Números de alquiler por día, ordenados por cantidad de alquiler de forma descendente.
-SELECT count(R.rental_id),R.rental_date
+SELECT count(DATE(r.rental_date)),DATE(r.rental_date)
 FROM rental r 
-GROUP BY r.rental_date
-ORDER BY count(R.rental_id) DESC;
+GROUP BY DATE(r.rental_date)
+ORDER BY count(DATE(r.rental_date)) DESC;
 
 -- 24. Encuentra las películas con una duración superior al promedio.
 SELECT f.title
@@ -151,8 +151,8 @@ FROM film f
 JOIN inventory i ON f.film_id = i.film_id
 JOIN rental r ON i.inventory_id = r.inventory_id
 JOIN payment p ON p.rental_id =r.rental_id
-WHERE p.amount > (SELECT AVG(P.amount)
-                    FROM payment p)
+WHERE p.amount > (SELECT AVG(f.rental_rate)
+                    FROM film f)
 ;
 -- 28. Muestra el id de los actores que hayan participado en más de 40 películas.
 SELECT fa.actor_id
@@ -162,13 +162,17 @@ HAVING COUNT(fa.film_id)>40;
 
 
 -- 29. Obtener todas las películas y, si están disponibles en el inventario, mostrar la cantidad disponible.
-SELECT COUNT(i.inventory_id), i.film_id
-FROM inventory i 
+SELECT COUNT(f.film_id), f.title
+FROM film f 
 WHERE EXISTS(
 SELECT 1
-FROM film
-WHERE i.film_id =film.film_id )
-GROUP BY i.film_id;
+FROM inventory i 
+JOIN rental r 
+ON r.inventory_id =i.inventory_id
+WHERE f.film_id =i.film_id AND R.return_date IS NOT NULL)
+GROUP BY f.film_id;
+/*las peliculas disponibles en el inventario son aquellas cuya fecha de devolucion esta registrada*/
+
 -- 30. Obtener los actores y el número de películas en las que ha actuado.
 SELECT fa.actor_id,COUNT(fa.film_id) AS total_peliculas, 
     (SELECT CONCAT(a.first_name,' ', a.last_name )
@@ -192,11 +196,13 @@ ON a.actor_id =fa.actor_id
         ON fa.film_id =f.film_id;
 
 -- 33. Obtener todas las películas que tenemos y todos los registros de alquiler.
-SELECT f.film_id AS pelicula
-FROM film f;
+SELECT f.title  AS pelicula, r.rental_id AS registro_alquiler
+FROM film f
+FULL JOIN inventory i 
+ON f.film_id =i.film_id 
+    FULL JOIN rental r
+        ON r.inventory_id=i.inventory_id;
 
-SELECT r.rental_id AS registro_alquiler
-FROM rental r ;
 --34. Encuentra los 5 clientes que más dinero se hayan gastado con nosotros.
 SELECT p.customer_id , SUM(p.amount) AS dinero_gastado
 FROM payment p
@@ -297,7 +303,7 @@ INNER JOIN rental r
 ON r.customer_id =c.customer_id
 GROUP BY c.customer_id;
 -- 50. Calcula la duración total de las películas en la categoría 'Action'.
-SELECT f.title, f.length AS Duracion
+SELECT SUM(f.length) AS Duracion
 FROM film f 
 INNER JOIN film_category fc 
 ON f.film_id =fc.film_id
@@ -315,14 +321,14 @@ GROUP BY c.customer_id
 /*52. Crea una tabla temporal llamada “peliculas_alquiladas” que almacene las
 películas que han sido alquiladas al menos 10 veces.*/
 CREATE TEMPORARY TABLE peliculas_alquiladas AS(
-SELECT r.rental_id
+SELECT i.film_id
 FROM inventory i
 INNER JOIN rental r 
 ON i.inventory_id=r.inventory_id
 INNER JOIN film f 
 ON F.film_id =i.film_id
-GROUP BY r.rental_id 
-HAVING COUNT(f.film_id)>10
+GROUP BY i.film_id
+HAVING COUNT(i.film_id)>10
 )
 
 /*53. Encuentra el título de las películas que han sido alquiladas por el cliente
@@ -335,7 +341,7 @@ JOIN customer c ON r.customer_id = c.customer_id
 WHERE c.first_name = 'Tammy' 
 AND c.last_name = 'Sanders'
 AND r.return_date IS NULL
-ORDER BY f.title DESC;
+ORDER BY f.title ASC;
 
 
 /*54. Encuentra los nombres de los actores que han actuado en al menos una
@@ -377,7 +383,7 @@ GROUP BY a.actor_id
 ORDER BY a.last_name ASC;
 
 --56. Encuentra el nombre y apellido de los actores que no han actuado en ninguna película de la categoría ‘Music’.
-SELECT CONCAT(a.first_name,' ', a.last_name ) AS Actor
+SELECT DISTINCT (CONCAT(a.first_name,' ', a.last_name )) AS Actor
 FROM actor a 
 INNER JOIN film_actor fa 
 ON fa.actor_id =a.actor_id
@@ -388,8 +394,8 @@ WHERE fa.film_id NOT IN
     ON f.film_id =fc.film_id
     INNER JOIN category c 
     ON fc.category_id =c.category_id
-    WHERE c."name" ='Music')
-GROUP BY a.actor_id ;
+    WHERE c."name" ='Music');
+
 
 --57. Encuentra el título de todas las películas que fueron alquiladas por más de 8 días.
 SELECT f.title
@@ -405,7 +411,11 @@ INNER JOIN film_category fc
 ON f.film_id =fc.film_id
     INNER JOIN category c 
     ON fc.category_id =c.category_id
-WHERE c."name" ='Animation';
+WHERE fc.category_id IN
+    (SELECT c.category_id
+    FROM category c 
+    WHERE c."name" ='Animation');
+
 /* 59. Encuentra los nombres de las películas que tienen la misma duración
 que la película con el título ‘Dancing Fever’. Ordena los resultados
 alfabéticamente por título de película.*/
@@ -423,7 +433,7 @@ FROM customer c
 INNER JOIN rental r ON r.customer_id =c.customer_id
 INNER JOIN inventory i ON i.inventory_id =r.inventory_id
 GROUP BY c.customer_id  
-HAVING COUNT(i.film_id)>7
+HAVING COUNT(DISTINCT(i.film_id))>7
 ORDER BY c.last_name;
 
 --61. Encuentra la cantidad total de películas alquiladas por categoría y muestra el nombre de la categoría junto con el recuento de alquileres.
